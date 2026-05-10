@@ -484,7 +484,7 @@ func TestReconcile(t *testing.T) {
 			},
 		},
 		{
-			name: "reconcile_job_not_found_user_secret_missing_no_requeue",
+			name: "reconcile_job_not_found_user_secret_missing_updates_status_to_failed",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
 			},
@@ -510,10 +510,25 @@ func TestReconcile(t *testing.T) {
 				}
 				return []client.Object{mg, cv}
 			},
-			interceptors:   func() interceptClient { return interceptClient{} },
-			expectError:    false,
-			expectResult:   reconcile.Result{},
-			postTestChecks: func(t *testing.T, cl client.Client) {},
+			interceptors: func() interceptClient { return interceptClient{} },
+			expectError:  true,
+			expectResult: reconcile.Result{},
+			postTestChecks: func(t *testing.T, cl client.Client) {
+				// Verify that the MustGather status was updated to "Failed"
+				out := &mustgatherv1alpha1.MustGather{}
+				if getErr := cl.Get(context.TODO(), types.NamespacedName{Name: "example-mustgather", Namespace: "ns"}, out); getErr != nil {
+					t.Fatalf("failed to get mustgather: %v", getErr)
+				}
+				if out.Status.Status != "Failed" {
+					t.Fatalf("expected status to be 'Failed', got '%s'", out.Status.Status)
+				}
+				if !out.Status.Completed {
+					t.Fatalf("expected completed to be true, got false")
+				}
+				if out.Status.Reason != "Secret sec not found in namespace ns" {
+					t.Fatalf("expected reason to contain secret not found message, got '%s'", out.Status.Reason)
+				}
+			},
 		},
 		{
 			name: "reconcile_job_active_updates_status_running",
