@@ -177,7 +177,16 @@ func (r *MustGatherReconciler) Reconcile(ctx context.Context, request reconcile.
 			if err != nil {
 				if errors.IsNotFound(err) {
 					log.Error(err, fmt.Sprintf("the secret %s was not found in namespace %s", secretName, instance.Namespace))
-					return reconcile.Result{}, nil
+					// Update the MustGather CR status to indicate the secret was not found
+					instance.Status.Status = "Failed"
+					instance.Status.Completed = true
+					instance.Status.Reason = fmt.Sprintf("Secret %s not found in namespace %s", secretName, instance.Namespace)
+					statusErr := r.GetClient().Status().Update(ctx, instance)
+					if statusErr != nil {
+						log.Error(statusErr, "unable to update instance status", "instance", instance)
+						return r.ManageError(ctx, instance, statusErr)
+					}
+					return r.ManageError(ctx, instance, err)
 				}
 				log.Error(err, fmt.Sprintf("Error getting secret (%s)", secretName))
 				return reconcile.Result{Requeue: true}, err
