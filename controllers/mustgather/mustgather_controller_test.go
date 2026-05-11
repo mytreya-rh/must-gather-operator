@@ -3,6 +3,7 @@ package mustgather
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -484,7 +485,7 @@ func TestReconcile(t *testing.T) {
 			},
 		},
 		{
-			name: "reconcile_job_not_found_user_secret_missing_no_requeue",
+			name: "reconcile_job_not_found_user_secret_missing_returns_error_and_updates_status",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
 			},
@@ -510,10 +511,22 @@ func TestReconcile(t *testing.T) {
 				}
 				return []client.Object{mg, cv}
 			},
-			interceptors:   func() interceptClient { return interceptClient{} },
-			expectError:    false,
-			expectResult:   reconcile.Result{},
-			postTestChecks: func(t *testing.T, cl client.Client) {},
+			interceptors: func() interceptClient { return interceptClient{} },
+			expectError:  true,
+			expectResult: reconcile.Result{},
+			postTestChecks: func(t *testing.T, cl client.Client) {
+				out := &mustgatherv1alpha1.MustGather{}
+				if err := cl.Get(context.TODO(), types.NamespacedName{Name: "example-mustgather", Namespace: "ns"}, out); err != nil {
+					t.Fatalf("failed to get mustgather: %v", err)
+				}
+				if len(out.Status.Conditions) == 0 {
+					t.Fatalf("expected CR status conditions to be set, but got none")
+				}
+				msg := out.Status.Conditions[0].Message
+				if !strings.Contains(msg, "sec") || !strings.Contains(msg, "ns") {
+					t.Fatalf("expected condition message to reference secret name and namespace, got: %q", msg)
+				}
+			},
 		},
 		{
 			name: "reconcile_job_active_updates_status_running",
